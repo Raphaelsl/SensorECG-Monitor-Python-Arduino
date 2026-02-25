@@ -33,10 +33,6 @@ Métricas Avançadas: Monitoramento de BPM médio, oscilações mínimas e máxi
 👥 Desenvolvimento em Grupo
 Este projeto foi desenvolvido de forma colaborativa como parte das atividades acadêmicas.
 
-Raphael Lameira — Desenvolvimento da lógica de integração, tratamento de dados e documentação.
-
-Vanderson — Arquitetura inicial e implementação do fluxo de sinal.
-
 🚀 Como Executar
 Arduino: Carregue o arquivo .ino na sua placa.
 
