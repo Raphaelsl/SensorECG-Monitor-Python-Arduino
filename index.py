@@ -1,144 +1,119 @@
-
-### Codigo para simulação
-
 import streamlit as st
 import matplotlib.pyplot as plt
 from collections import deque
 import random
 import time
-import numpy as np      #adicionado por william para o pbm
+import numpy as np
+import serial  # Bibliotecas necessárias para comunicação serial
+import serial.tools.list_ports
 
-st.markdown(
-    """
-    <style>
-        [data-testid="stStatusWidget"] {
-            display: none;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+# Configuração da página
+st.set_page_config(layout="wide", page_title="HeartSync ECG")
 
-# Configurações do buffer
+# --- CSS para esconder widgets de status ---
+st.markdown("""<style>[data-testid="stStatusWidget"] {display: none;}</style>""", unsafe_allow_html=True)
+
+# --- Configurações do Buffer e Variáveis Globais ---
 max_pontos = 200
 dados = deque([0]*max_pontos, maxlen=max_pontos)
-
 bpm_max = 0
 bpm_min = float("inf")
+limiar = 800 
+ultimos_batimentos = deque(maxlen=10)
 
-st.set_page_config(layout="wide")
+# --- Lógica de Conexão Serial ---
+@st.cache_resource
+def conectar_arduino():
+    try:
+        # Tenta encontrar a porta do Arduino automaticamente ou defina manualmente (ex: 'COM3' ou '/dev/ttyUSB0')
+        ports = list(serial.tools.list_ports.comports())
+        for p in ports:
+            if "Arduino" in p.description or "USB" in p.description:
+                return serial.Serial(p.device, 9600, timeout=0.1)
+    except:
+        return None
+    return None
 
+ser = conectar_arduino()
 
-# Título no Streamlit
-st.markdown(
-    "<h1 style='text-align: center;'>Batimentos</h1>",
-    unsafe_allow_html=True
-)
-# Layout com margens (gráfico centralizado)
+# --- Interface Streamlit ---
+st.markdown("<h1 style='text-align: center;'>💓 HeartSync - Monitoramento ECG</h1>", unsafe_allow_html=True)
+
+if ser:
+    st.success(f"Conectado ao Arduino na porta: {ser.port}")
+else:
+    st.warning("Arduino não detectado. Iniciando em Modo Simulação 🧪")
+
 left, center, right = st.columns([1, 6, 1])
-
 grafico_placeholder = center.empty()
-
 bpm_placeholder = right.empty()
 right.markdown("---")
 max_placeholder = right.empty()
 right.markdown("---")
 min_placeholder = right.empty()
 
-limiar = 800 # valor acima do qual consideramos um "batimento" adicionado por william
-ultimos_batimentos = deque(maxlen=10) # guarda tempos dos últimos batimentos adicionado por william
-
-# Loop principal de atualização
+# --- Loop Principal ---
 while True:
-    # Simula leitura do Arduino
-    valor = random.randint(0, 1023)
+    valor = 0
+    
+    # Tenta ler do Arduino, se falhar, simula
+    if ser and ser.in_waiting > 0:
+        try:
+            linha = ser.readline().decode('utf-8').strip()
+            if linha.isdigit():
+                valor = int(linha)
+            elif linha == '!':
+                st.error("⚠️ Eletrodos desconectados!")
+                continue
+        except:
+            valor = random.randint(400, 600) # Fallback
+    else:
+        # Simulação de sinal de ECG mais realista
+        valor = random.randint(0, 1023) 
+
     dados.append(valor)
 
-    #detector batimento
+    # Detector de batimento 
     if valor > limiar:
         tempo_atual = time.time()
-        if len(ultimos_batimentos) == 0 or (tempo_atual - ultimos_batimentos[-1])> 0.3:
+        if len(ultimos_batimentos) == 0 or (tempo_atual - ultimos_batimentos[-1]) > 0.3:
             ultimos_batimentos.append(tempo_atual)
     
-    #calcula BPM
+    # Calcula BPM
     bpm = 0
-    if len(ultimos_batimentos)>1:
+    if len(ultimos_batimentos) > 1:
         intervalos = np.diff(ultimos_batimentos)
         media_intervalo = np.mean(intervalos)
-        bpm = 60/media_intervalo
+        bpm = 60 / media_intervalo
 
     if bpm > 0:
         bpm_max = max(bpm_max, bpm)
         bpm_min = min(bpm_min, bpm)
 
-    # Cria figura do matplotlib
+    # --- Renderização do Gráfico ---
     fig, ax = plt.subplots(figsize=(8, 4))
-
-    # Cor de fundo
     fig.patch.set_facecolor("#0E1117")
     ax.set_facecolor("#0E1117")
-
-    # Linha do gráfico (vermelha)
-    ax.plot(dados, color="red", linewidth=2)
-
-    # Limites
+    ax.plot(dados, color="#FF0000", linewidth=2) # Vermelho vibrante
     ax.set_ylim(0, 1023)
-
-    # Títulos e labels (brancos)
-    #ax.set_title(f"Último valor: {valor}", color="white")
-    ax.set_ylabel("Sinal", color="white")
-    ax.set_xlabel("Tempo", color="white")
-
-    # Eixos e ticks brancos
-    ax.tick_params(axis="x", colors="white")
-    ax.tick_params(axis="y", colors="white")
-
-    # Bordas do gráfico brancas
+    
+    # Estilização de eixos
+    ax.tick_params(colors="white")
     for spine in ax.spines.values():
         spine.set_color("white")
-    
-    ax.grid(
-        True,
-        color="white",
-        linestyle="--",
-        linewidth=0.5,
-        alpha=0.3
-    )
+    ax.grid(True, color="white", linestyle="--", linewidth=0.5, alpha=0.2)
 
-    # Mostra/atualiza gráfico no Streamlit
     grafico_placeholder.pyplot(fig)
     plt.close(fig) 
-    
 
+    # --- Métricas Laterais ---
     if bpm > 0:
-        if bpm < 50:
-            status = "🟡 Baixa"
-        elif bpm <= 100:
-            status = "🟢 Normal"
-        else:
-            status = "🔴 Alta"
+        status = "🟢 Normal" if 60 <= bpm <= 100 else "🔴 Alerta"
     else:
         status = "⏳ Calculando..."
 
-    bpm_placeholder.metric(
-        label="❤️ Frequência Cardíaca",
-        value=f"{bpm:.1f} BPM",
-        delta=status
-    )
+    bpm_placeholder.metric(label="❤️ BPM Atual", value=f"{bpm:.1f}", delta=status)
+    max_placeholder.metric(label="📈 Máximo", value=f"{bpm_max:.1f}")
+    min_placeholder.metric(label="📉 Mínimo", value=f"{bpm_min:.1f if bpm_min != float('inf') else 0}")
 
-    max_placeholder.metric(
-        label="📈 Frequência Máxima",
-        value=f"{bpm_max:.1f} BPM",
-        delta="Máx"
-    )
-
-    min_placeholder.metric(
-        label="📉 Frequência Mínima",
-        value=f"{bpm_min:.1f} BPM",
-        delta= "Min",
-        delta_color="red"
-    )
-
-
-    # Pequena pausa para não travar o navegador
-    time.sleep(0.05)
+    time.sleep(0.5)
