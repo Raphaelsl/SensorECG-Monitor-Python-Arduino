@@ -39,5 +39,5 @@ Arduino: Carregue o arquivo .ino na sua placa.
 Python:
 
 Bash
-pip install streamlit pyserial numpy
-streamlit run app.py
+pip install streamlit pyserial numpy.
+streamlit run app.py.
